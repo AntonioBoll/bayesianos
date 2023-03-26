@@ -197,5 +197,10 @@ Há evidências para concluir que todos os grupos se diferem entre si, exceto o 
 ## Referências
 
 - "https://agabrioblog.onrender.com/jags/single-factor-anova-jags/single-factor-anova-jags/"
+- "https://web.pdx.edu/~joel8/resources/ConceptualPresentationResources/JAGS_ANOVA.pdf"
+- "https://www.r-bloggers.com/2020/12/general-code-to-fit-anova-models-with-jags-and-rjags/"
 
+## GitHub
+
+Para acessar o repositório com os arquivos necessários para fazer esta analise, [clique aqui](https://github.com/AntonioBoll/bayesianos).
 
