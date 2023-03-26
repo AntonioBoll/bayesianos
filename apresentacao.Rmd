@@ -1,0 +1,201 @@
+---
+title: "ANOVA Bayesiana"
+author: "Antônio Oss Boll e Letícia Maria Puttlitz"
+output:
+  beamer_presentation: default
+  slidy_presentation: default
+  ioslides_presentation: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F)
+```
+
+
+## Introdução e contextualização
+A ANOVA Bayesiana é uma abordagem estatística para testar hipóteses em modelos ANOVA que permite incorporar informações prévias sobre os parâmetros do modelo e produz distribuições de probabilidade para os parâmetros. A ANOVA Bayesiana pode ser útil em situações com poucos dados disponíveis ou em modelos mais complexos. Nesta apresentação, vamos explorar os conceitos básicos da ANOVA Bayesiana e sua aplicação.
+
+
+## Motivação
+
+A ANOVA Bayesiana é uma abordagem alternativa à ANOVA frequentista. Ela permite:
+- Modelar a incerteza dos parâmetros usando distribuições de probabilidade.
+- Incorporar conhecimento prévio sobre os parâmetros e hipóteses.
+- A ANOVA Bayesiana pode ser usada para lidar com dados desbalanceados, outliers e heterocedasticidade.
+- Pode ser uma opção melhor do que a ANOVA frequentista quando se trabalha com um número limitado de dados.
+
+# Tutorial
+
+
+## Banco de dados
+
+O banco de dados foi criado a partir do seguinte código:
+
+```{r, echo = T, warning=FALSE}
+set.seed(123)
+
+nsample <- 10; ngroups <- 5
+trat <- as.factor(rep(0:4, rep(nsample, ngroups)))
+peso <- c(rnorm(nsample, 50, 3), # grupo controle
+          rnorm(nsample, 55, 3), # trat 1
+          rnorm(nsample, 65, 3), # trat 2
+          rnorm(nsample, 50, 3), # trat 3
+          rnorm(nsample, 40, 3)) # trat 4
+dados <- data.frame(peso, trat)
+```
+
+O banco de dados apresenta 2 variáveis:
+  
+- peso: peso
+  
+- trat: Controle, tratamento 1 - 4
+
+## Análise gráfica
+
+```{r, echo = F, warning=F, message=F}
+library(ggplot2)
+ggplot(dados, aes(y = peso, x = trat)) + geom_boxplot() +
+     theme_classic()
+```
+
+## JAGS
+
+O modelo JAGS foi definido da seguinte forma:
+
+model {
+  
+   #Likelihood
+  
+   for (i in 1:N) {
+  
+   y[i]~dnorm(mean[i],tau)
+  
+   mean[i] <- inprod(beta[],X[i,]) }
+  
+   #Priors
+  
+   for (i in 1:ngroups) {
+  
+   beta[i] ~ dnorm(0, 1.0E-6) 
+  
+   }
+  
+   sigma ~ dunif(0, 100)
+  
+   tau <- 1 / (sigma * sigma)
+   
+}
+
+## Código
+```{r, echo=T, results=F}
+X <- model.matrix(~trat, dados)
+data <- with(dados, list(y = dados$peso, # variavel resp 
+          X = X, # grupos
+          N = nrow(dados), # n observacoes
+          ngroups = length(levels(dados$trat)) # n grupos
+))
+
+params <- c("beta", "sigma")
+
+library(jagsUI)
+
+anova_jags_adt <- jags(data, NULL, params, "anova.jags", 
+                       n.chains=2, n.iter=10000,
+                       DIC=FALSE) 
+
+```
+
+## Resultados
+```{r, echo = T}
+sum_anova <- round(anova_jags_adt$summary[,c(1:3,7,10)],3); sum_anova
+```
+
+- a média do grupo controle é `r sum_anova[1]`
+- a media do trat1 é `r sum_anova[2]` unidades maiores que o grupo 0
+- a media do trat2 é `r sum_anova[3]` unidades maiores que o grupo 0
+- a media do trat3 é `r sum_anova[4]` unidades maiores que o grupo 0
+- a media do trat4 é `r abs(sum_anova[5])` unidades menores que o grupo 0
+
+## Diagnóstico de convergência
+```{r, echo=T, fig.height = 5}
+plot(anova_jags_adt)
+```
+
+## Diagonóstico de convergência
+
+```{r, echo = T}
+anova_jags_adt$summary[,c(8,9)]
+```
+
+- Rhat - valores próximos de 1
+- Tamanho amostral efetivo - valores altos
+
+## Comparação multipla
+```{r, echo = T}
+mcmc <- matrix(c(anova_jags_adt$sims.list$beta[,1],
+            anova_jags_adt$sims.list$beta[,2],
+            anova_jags_adt$sims.list$beta[,3],
+            anova_jags_adt$sims.list$beta[,4],
+            anova_jags_adt$sims.list$beta[,5]), 
+            nrow = 20000, ncol = 5, byrow=F)
+coefs <- as.matrix(mcmc)[, 1:5]
+newdata <- data.frame(x = levels(dados$trat))
+library(multcomp)
+tuk.mat <- contrMat(n = table(newdata$x), type = "Tukey")
+Xmat <- model.matrix(~x, data = newdata)
+pairwise.mat <- tuk.mat %*% Xmat
+```
+
+## Comparação multipla
+
+Matriz de comparação resultante do codigo anterior:
+
+```{r}
+pairwise.mat
+```
+
+## Comparação multipla
+
+```{r, echo=T, fig.height = 6}
+library(bayesplot)
+mcmc_areas(coefs %*% t(pairwise.mat))
+```
+
+## Comparação multipla
+```{r, echo = T}
+library(broom.mixed)
+(comps = tidyMCMC(coefs %*% t(pairwise.mat), 
+ conf.int = TRUE, conf.method = "HPDinterval"))
+
+```
+
+
+## Comparação multipla
+```{r, echo = T}
+
+comps[c(3,5,7),]
+```
+- A diferença entre o grupo 0 e grupo 3 não é significativa. Se o IC contem 0, a diferença não é significativa.
+- a media do grupo 2 é `r abs(round(comps[5,]$estimate,2))` unid maiores que o grupo 1.
+- a media do grupo 4 é `r abs(round(comps[7,]$estimate,2))` unid menores que o grupo 1.
+
+
+## Comparação multipla
+```{r, fig.height = 4, echo = T}
+ggplot(comps, aes(y = estimate, x = term)) +
+  geom_pointrange(aes(ymin = conf.low,
+     ymax = conf.high)) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  coord_flip() + theme_classic()
+```
+Diferença entre o trat3 e o grupo controle não é significativa, dado que o IC contem 0.
+
+## Conclusão
+
+Há evidências para concluir que todos os grupos se diferem entre si, exceto o tratamento 3 do grupo controle. O grupo que apresentou maior valor de peso foi o tratamento 2 e com menor valor foi o tratamento 4.
+
+## Referências
+
+- "https://agabrioblog.onrender.com/jags/single-factor-anova-jags/single-factor-anova-jags/"
+
+
